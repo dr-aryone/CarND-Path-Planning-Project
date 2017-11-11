@@ -15,6 +15,11 @@ using namespace std;
 // for convenience
 using json = nlohmann::json;
 
+#define REF_VELOCITY_FOR_LANE_CHANGE 42
+#define THRESHOLD_DISTANCE 37
+#define MAX_VELOCITY 49.5
+#define VERY_VERY_CLOSE_DISTANCE 15
+
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
@@ -159,19 +164,36 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 	return {x, y};
 }
 
+//This function will populate the vectors according to the magnitude of d
+void populateAppropriateLane(double d, double vehicle_s, vector<double> &left_lane, vector<double> &mid_lane, vector<double> &right_lane)
+{
+	if ((d < 4) && (d > 0))
+	{
+		left_lane.push_back(vehicle_s);
+	}
+
+	if ((d < 8) && (d > 4))
+	{
+		mid_lane.push_back(vehicle_s);
+	}
+
+	if ((d < 12) && (d > 8))
+	{
+		right_lane.push_back(vehicle_s);
+	}
+}
+
+//This function determines whether a car is too close or not
 bool isTooClose(double vehicle_s, double car_s, double upper_threshold, double lower_threshold)
 {
 	if (((vehicle_s - car_s) > upper_threshold) || ((vehicle_s - car_s) < lower_threshold))
 	{
 		return false;
 	}
-	else
-	{
-		return true;
-	}
+	return true;
 }
 
-//Cost is the number of vehicles in the particular lane
+//Cost is the number of vehicles in the particular lane and also cost depends if the vehicle is too close or not
 double calculateCollisionCost(vector<double> lane_s, double car_s, double upper_threshold, double lower_threshold)
 {
 	double cost = 0;
@@ -182,19 +204,6 @@ double calculateCollisionCost(vector<double> lane_s, double car_s, double upper_
 			cost += 10;
 		}
 		cost += 1;
-	}
-	return cost;
-}
-
-double keepLaneCost(double front_car, double car_d, double car_s, double lane)
-{
-	double cost = 0;
-	if ((car_d < (4 * lane + 2 + 2)) && (car_d > (4 * lane)))
-	{
-		if ((front_car > car_s) && ((front_car - car_s) < 30))
-		{
-			cost += 1;
-		}
 	}
 	return cost;
 }
@@ -240,9 +249,10 @@ int main()
 
 	int lane = 1;
 	double ref_vel = 0.0;
+	double distance_between_car = 0.0;
 
-	h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy, &ref_vel, &lane](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-																															  uWS::OpCode opCode) {
+	h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy, &ref_vel, &lane, &distance_between_car](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+																																					 uWS::OpCode opCode) {
 		// "42" at the start of the message means there's a websocket message event.
 		// The 4 signifies a websocket message
 		// The 2 signifies a websocket event
@@ -292,9 +302,9 @@ int main()
 						car_s = end_path_s;
 					}
 
-					vector<double> mid_lane;
-					vector<double> left_lane;
-					vector<double> right_lane;
+					vector<double> left_lane;  //Lane 0
+					vector<double> mid_lane;   //Lane 1
+					vector<double> right_lane; //Lane 2
 
 					for (int i = 0; i < sensor_fusion.size(); i++)
 					{
@@ -304,26 +314,14 @@ int main()
 						double vehicle_speed = sqrt(vx * vx + vy * vy);
 						double vehicle_s = sensor_fusion[i][5];
 						vehicle_s += vehicle_speed * 0.02 * previous_path_x.size();
-						// Future s of vehicle on middle lane
-						if ((d < 8) && (d > 4))
-						{
-							mid_lane.push_back(vehicle_s);
-						}
-						// Future s of vehicles on left lane
-						if ((d < 4) && (d > 0))
-						{
-							left_lane.push_back(vehicle_s);
-						}
-						// Future s of vehicle on right lane
-						if ((d < 12) && (d > 8))
-						{
-							right_lane.push_back(vehicle_s);
-						}
-						// Check distance of vehicle in front
+
+						populateAppropriateLane(d, vehicle_s, left_lane, mid_lane, right_lane);
+
+						// Check whether the vehicle in front of our vehicle is too close or not by calculating the distance and using some threshold.
 						if ((d < (4 * lane + 2 + 2)) && (d > (4 * lane)))
 						{
-							//                vehicle_s += vehicle_speed*0.02*previous_path_x.size();
-							if ((vehicle_s > car_s) && ((vehicle_s - car_s) < 35))
+							distance_between_car = vehicle_s - car_s;
+							if ((vehicle_s > car_s) && (distance_between_car < THRESHOLD_DISTANCE))
 							{
 								too_close = true;
 							}
@@ -332,9 +330,15 @@ int main()
 
 					if (too_close)
 					{
-						ref_vel -= 0.23;
-
-						if (ref_vel < 40)
+						if (distance_between_car < VERY_VERY_CLOSE_DISTANCE)
+						{
+							ref_vel -= 0.96; //Declearte more as the car is very very close
+						}
+						else
+						{
+							ref_vel -= 0.46; //Normal decleration
+						}
+						if (ref_vel < REF_VELOCITY_FOR_LANE_CHANGE)
 						{
 							if (lane == 0 or lane == 2)
 							{
@@ -366,7 +370,7 @@ int main()
 							}
 						}
 					}
-					else if (ref_vel < 49.5)
+					else if (ref_vel < MAX_VELOCITY)
 					{
 						ref_vel += 0.23;
 					}
@@ -376,13 +380,12 @@ int main()
 					vector<double> ptsx;
 					vector<double> ptsy;
 
-					// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-
 					double ref_x = car_x;
 					double ref_y = car_y;
 					double ref_yaw = car_yaw;
 
 					double ref_prev_x, ref_prev_y;
+
 					if (prev_size < 2)
 					{
 						ref_prev_x = ref_x - cos(ref_yaw);
@@ -413,7 +416,7 @@ int main()
 					ptsy.push_back(waypoint1[1]);
 					ptsy.push_back(waypoint2[1]);
 
-					// Transform all points with the current point is at 0 yaw rate //
+					// Corrdinates transform
 					for (int i = 0; i < ptsx.size(); i++)
 					{
 						double shift_x = ptsx[i] - ref_x;
@@ -425,7 +428,6 @@ int main()
 					tk::spline s;
 					s.set_points(ptsx, ptsy);
 
-					// Set Velocity
 					double target_x = 30;
 					double target_y = s(30);
 					double target_dist = sqrt(target_x * target_x + target_y * target_y);
@@ -436,14 +438,14 @@ int main()
 						next_y_vals.push_back(previous_path_y[i]);
 					}
 
-					double x_add_on = 0.0;
+					double x_additional = 0.0;
 
 					for (int i = 0; i < 50 - prev_size; i++)
 					{
 						double N = target_dist / (0.02 * ref_vel / 2.24);
-						double x_ = x_add_on + target_x / N;
+						double x_ = x_additional + target_x / N;
 						double y_ = s(x_);
-						x_add_on = x_;
+						x_additional = x_;
 
 						double x_ref = x_, y_ref = y_;
 						x_ = ref_x + (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
