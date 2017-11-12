@@ -330,19 +330,13 @@ int main()
 
 					if (too_close)
 					{
-						if (distance_between_car < VERY_VERY_CLOSE_DISTANCE)
-						{
-							ref_vel -= 0.96; //Declearte more as the car is very very close
-						}
-						else
-						{
-							ref_vel -= 0.46; //Normal decleration
-						}
+						ref_vel -= 0.23;
+						
 						if (ref_vel < REF_VELOCITY_FOR_LANE_CHANGE)
 						{
 							if (lane == 0 or lane == 2)
 							{
-								double collision_cost = calculateCollisionCost(mid_lane, car_s, 25, -10);
+								double collision_cost = calculateCollisionCost(mid_lane, car_s, 25, -12);
 								if (collision_cost < 10)
 								{
 									lane = 1;
@@ -351,8 +345,8 @@ int main()
 
 							else if (lane == 1)
 							{
-								double left_cost = calculateCollisionCost(left_lane, car_s, 25, -10);
-								double right_cost = calculateCollisionCost(right_lane, car_s, 25, -10);
+								double left_cost = calculateCollisionCost(left_lane, car_s, 25, -12);
+								double right_cost = calculateCollisionCost(right_lane, car_s, 25, -12);
 								if (left_cost < right_cost)
 								{
 									if (left_cost < 10)

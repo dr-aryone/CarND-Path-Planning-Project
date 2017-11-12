@@ -51,7 +51,7 @@ We will be using Frenet coordinate system so that it will be easy to code and un
  <p align="center">
   <img src="https://media.giphy.com/media/xUOxf44pUXfq4BxpbG/giphy.gif?raw=true" alt="Lane Change"/>
 </p>
- <br><br>If our car is too close to the car ahead, first action is to check the distance and determine whether is it very very close or not. If it is very very close then decrease the current velocity by 0.96 m/s and if is just close then decrease the current velocity by of 0.46 m/s. 
+ <br><br>If our car is too close to the car ahead, first action is to check the distance and determine whether is it very very close or not. If it is very close then decrease the current velocity by 0.23 m/s. 
  <br>If the car has velocity lower than speed limit (49.5 mph), then we should increase with the velocity by 0.23 m/s.
  
  If the velocity is decreased lower than 42 mph, then our car 
